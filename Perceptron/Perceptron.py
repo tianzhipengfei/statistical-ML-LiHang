@@ -5,12 +5,17 @@
 # @Software: PyCharm
 
 import numpy as np
+import pandas as pd
+import cv2
 import random
 import time
 
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
+
 
 class Perceptron:
-    def __init__(self, learning_step = 0.01, max_iteration = 1000, max_correction_ratio = 0.95):
+    def __init__(self, learning_step=0.01, max_iteration=1000, max_correction_ratio=0.95):
         self.max_iteration = max_iteration
         self.learning_step = learning_step
         self.max_correction_ratio = max_correction_ratio
@@ -48,16 +53,20 @@ class Perceptron:
         self.w = [0.0] * (length_of_features)
         data_num = len(X)
         w1 = [0.0] * (data_num + 1)
-        Gram_matrix = [[0.0 for i in range(data_num)] for j in range(data_num)]
+        print('before init gram matrix')
+        gram_matrix = np.zeros((data_num, data_num))
+        print('after init gram matrix')
         for i in range(data_num):
+            print(i)
             for j in range(data_num):
-                Gram_matrix[i][j] = sum([X[i][k] * X[j][k] for k in range(length_of_features)])
+                gram_matrix[i][j] = sum([X[i][k] * X[j][k] for k in range(length_of_features)])
+        print('end calculate gram_matrix')
         iteration_time = 0
         correct_time = 0
         while iteration_time < self.max_iteration and correct_time < data_num * self.max_correction_ratio:
             index = random.randint(0, data_num - 1)
             y = Y[index]
-            wx = sum([(w1[j] * Y[j] * Gram_matrix[j][index] + w1[-1]) for j in range(len(w1) - 1)])
+            wx = sum([(w1[j] * Y[j] * gram_matrix[j][index] + w1[-1]) for j in range(len(w1) - 1)])
             if wx * y > 0:
                 iteration_time += 1
                 correct_time += 1
@@ -72,25 +81,42 @@ class Perceptron:
             for j in range(len(w1) - 1):
                 self.w[i] += X[j][i] * w1[j]
 
+    def predict(self, X):
+        res = []
+        for i in range(len(X)):
+            x = X[i]
+            ans = sum([self.w[j] * x[j] for j in range(len(self.w))]) + self.b
+            res.append(int(ans > 0))
+        return res
 
-    def predict(self, x):
-        res = sum([self.w[j] * x[j] for j in range(len(self.w))])
-        lala = "w: "
-        for i in range(len(self.w)):
-            lala += str(self.w[i]) + " "
-        return (res > 0) * 2 - 1
+
+def get_hog_features(trainset):
+    features = []
+    hog = cv2.HOGDescriptor('../data/hog.xml')
+    for img in trainset:
+        img = np.reshape(img, (28, 28))
+        cv_img = img.astype(np.uint8)
+        hog_feature = hog.compute(cv_img)
+        # hog_feature = np.transpose(hog_feature)
+        features.append(hog_feature)
+    features = np.array(features)
+    features = np.reshape(features, (-1, 324))
+    return features
 
 
 if __name__ == '__main__':
-    X = [[3, 3],
-        [4, 3],
-        [1, 1]]
-    Y = [1, 1, -1]
-    X1 = [1, 1]
-    perceptron1 = Perceptron(1, 7)
-    perceptron2 = Perceptron(1, 7)
-    perceptron1.dual_train(X, Y)
-    print(perceptron1.predict(X1))
-    perceptron2.normal_train(X, Y)
-    print(perceptron2.predict(X1))
+    raw_data = pd.read_csv('../data/train_binary.csv', header=0)
+    data = raw_data.values
+    imgs = data[0::, 1::]
+    labels = data[::, 0]
+    features = get_hog_features(imgs)
 
+    # 选取 2/3 数据作为训练集， 1/3 数据作为测试集
+    train_features, test_features, train_labels, test_labels = train_test_split(features, labels,
+                                                                                test_size=0.33, random_state=23323)
+    perceptron = Perceptron()
+    print('start train')
+    perceptron.dual_train(train_features, train_labels)
+    test_predict = perceptron.predict(test_features)
+    score = accuracy_score(test_labels, test_predict)
+    print("The accruacy socre is ", score)
